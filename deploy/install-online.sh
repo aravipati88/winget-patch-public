@@ -44,6 +44,51 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 echo -e "${BLUE}📁 Project root: ${PROJECT_ROOT}${NC}"
 
+# Check if we have the necessary project files
+if [ ! -f "$PROJECT_ROOT/backend/database/schema.sql" ]; then
+    echo -e "${YELLOW}⚠️  Schema file not found at $PROJECT_ROOT/backend/database/schema.sql${NC}"
+    echo -e "${YELLOW}   Attempting to clone repository...${NC}"
+
+    # Check if git is installed
+    if ! command -v git &> /dev/null; then
+        echo -e "${YELLOW}   Installing git...${NC}"
+        apt install -y git
+    fi
+
+    # Clone the repository to a temporary location
+    TEMP_DIR="/tmp/winget-patch-install-$$"
+    git clone https://github.com/aravipati88/winget-patch.git "$TEMP_DIR" 2>/dev/null || \
+    git clone https://github.com/yourusername/winget-patch.git "$TEMP_DIR" 2>/dev/null || {
+        echo -e "${RED}❌ Could not clone repository. Please ensure you run this script from the project directory.${NC}"
+        echo -e "${RED}   Or manually clone the repo first:${NC}"
+        echo -e "${YELLOW}   git clone <repo-url> /opt/winget-patch-source${NC}"
+        echo -e "${YELLOW}   cd /opt/winget-patch-source/deploy${NC}"
+        echo -e "${YELLOW}   sudo ./install-online.sh${NC}"
+        exit 1
+    }
+
+    PROJECT_ROOT="$TEMP_DIR"
+    echo -e "${GREEN}✓${NC} Repository cloned to ${PROJECT_ROOT}"
+fi
+
+# Verify essential files exist
+if [ ! -f "$PROJECT_ROOT/backend/database/schema.sql" ]; then
+    echo -e "${RED}❌ Schema file not found: $PROJECT_ROOT/backend/database/schema.sql${NC}"
+    exit 1
+fi
+
+if [ ! -f "$PROJECT_ROOT/backend/main.go" ]; then
+    echo -e "${RED}❌ Backend source not found: $PROJECT_ROOT/backend/main.go${NC}"
+    exit 1
+fi
+
+if [ ! -f "$PROJECT_ROOT/frontend/package.json" ]; then
+    echo -e "${RED}❌ Frontend source not found: $PROJECT_ROOT/frontend/package.json${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}✓${NC} All required files found"
+
 # Step 1: Update system
 echo ""
 echo -e "${YELLOW}[1/10]${NC} Updating system packages..."
@@ -122,7 +167,18 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO $DB_USER;
 EOF
 
 # Apply schema
-sudo -u postgres psql -d $DB_NAME -f "$PROJECT_ROOT/backend/database/schema.sql"
+echo -e "${BLUE}   Applying database schema from: $PROJECT_ROOT/backend/database/schema.sql${NC}"
+if [ ! -f "$PROJECT_ROOT/backend/database/schema.sql" ]; then
+    echo -e "${RED}❌ Error: Schema file not found at $PROJECT_ROOT/backend/database/schema.sql${NC}"
+    exit 1
+fi
+
+if ! sudo -u postgres psql -d $DB_NAME -f "$PROJECT_ROOT/backend/database/schema.sql"; then
+    echo -e "${RED}❌ Error: Failed to apply database schema${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}✓${NC} Schema applied successfully"
 
 # Grant permissions on existing tables
 sudo -u postgres psql -d $DB_NAME << EOF

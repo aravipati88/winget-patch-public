@@ -40,40 +40,55 @@ echo -e "${GREEN}✓${NC} Running as root"
 
 # Get the script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-echo -e "${BLUE}📁 Project root: ${PROJECT_ROOT}${NC}"
-
-# Check if we have the necessary project files
-if [ ! -f "$PROJECT_ROOT/backend/database/schema.sql" ]; then
-    echo -e "${YELLOW}⚠️  Schema file not found at $PROJECT_ROOT/backend/database/schema.sql${NC}"
-    echo -e "${YELLOW}   Attempting to clone repository...${NC}"
+# Check if we're in a proper project directory structure
+if [ -f "$SCRIPT_DIR/../backend/database/schema.sql" ]; then
+    # Script is in deploy/ subdirectory of project
+    PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+    echo -e "${BLUE}📁 Running from project directory: ${PROJECT_ROOT}${NC}"
+else
+    # Script was downloaded standalone - need to clone the repository
+    echo -e "${YELLOW}📦 Standalone script detected - cloning source repository...${NC}"
 
     # Check if git is installed
     if ! command -v git &> /dev/null; then
         echo -e "${YELLOW}   Installing git...${NC}"
+        apt update -qq
         apt install -y git
     fi
 
-    # Clone the repository to a temporary location
-    TEMP_DIR="/tmp/winget-patch-install-$$"
-    git clone https://github.com/aravipati88/winget-patch.git "$TEMP_DIR" 2>/dev/null || \
-    git clone https://github.com/yourusername/winget-patch.git "$TEMP_DIR" 2>/dev/null || {
-        echo -e "${RED}❌ Could not clone repository. Please ensure you run this script from the project directory.${NC}"
-        echo -e "${RED}   Or manually clone the repo first:${NC}"
-        echo -e "${YELLOW}   git clone <repo-url> /opt/winget-patch-source${NC}"
-        echo -e "${YELLOW}   cd /opt/winget-patch-source/deploy${NC}"
-        echo -e "${YELLOW}   sudo ./install-online.sh${NC}"
-        exit 1
-    }
+    # Clone the repository
+    PROJECT_ROOT="/opt/winget-patch-source"
 
-    PROJECT_ROOT="$TEMP_DIR"
+    echo -e "${BLUE}   Cloning from GitHub...${NC}"
+
+    # Remove old clone if exists
+    if [ -d "$PROJECT_ROOT" ]; then
+        echo -e "${YELLOW}   Removing existing directory...${NC}"
+        rm -rf "$PROJECT_ROOT"
+    fi
+
+    # Try to clone from the main public repository
+    if ! git clone https://github.com/aravipati88/Patch-Manager.git "$PROJECT_ROOT"; then
+        echo -e "${RED}❌ Failed to clone repository from GitHub${NC}"
+        echo -e "${RED}   Please check your internet connection and try again.${NC}"
+        echo -e ""
+        echo -e "${YELLOW}Alternative: Clone manually first:${NC}"
+        echo -e "   git clone https://github.com/aravipati88/Patch-Manager.git /opt/winget-patch-source"
+        echo -e "   cd /opt/winget-patch-source/deploy"
+        echo -e "   sudo bash install-online.sh"
+        exit 1
+    fi
+
     echo -e "${GREEN}✓${NC} Repository cloned to ${PROJECT_ROOT}"
 fi
 
-# Verify essential files exist
+# Verify all essential files exist
+echo -e "${BLUE}🔍 Verifying project files...${NC}"
+
 if [ ! -f "$PROJECT_ROOT/backend/database/schema.sql" ]; then
     echo -e "${RED}❌ Schema file not found: $PROJECT_ROOT/backend/database/schema.sql${NC}"
+    ls -la "$PROJECT_ROOT/backend/database/" 2>/dev/null || echo "Directory doesn't exist"
     exit 1
 fi
 
@@ -88,6 +103,7 @@ if [ ! -f "$PROJECT_ROOT/frontend/package.json" ]; then
 fi
 
 echo -e "${GREEN}✓${NC} All required files found"
+echo -e "${BLUE}📁 Project root: ${PROJECT_ROOT}${NC}"
 
 # Step 1: Update system
 echo ""
